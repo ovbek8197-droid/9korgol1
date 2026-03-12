@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тогуз Коргоол</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --board-color: #8d6e63;
+            --pit-color: #5d4037;
+            --p1-color: #3498db;
+            --p2-color: #e74c3c;
+            --text-light: #ecf0f1;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-light);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        select, button {
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button {
+            background-color: #27ae60;
+            color: white;
+            transition: 0.3s;
+        }
+
+        button:hover { background-color: #2ecc71; }
+
+        /* Игровая доска */
+        .board {
+            background-color: var(--board-color);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 95vw;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .pit {
+            width: 60px;
+            height: 100px;
+            background-color: var(--pit-color);
+            border-radius: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: 0.2s;
+            border: 3px solid transparent;
+        }
+
+        .pit:hover { border-color: rgba(255,255,255,0.3); }
+
+        .pit.tuz { border-color: gold !important; background-color: #4e342e; }
+        .pit.tuz::after { content: "ТУЗ"; color: gold; font-size: 10px; position: absolute; top: 5px; }
+
+        .count { font-size: 24px; font-weight: bold; pointer-events: none; }
+        .pit-index { font-size: 10px; color: #a1887f; pointer-events: none; }
+
+        /* Казаны (Хранилища) */
+        .kazans {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .kazan {
+            background-color: #3e2723;
+            padding: 10px 30px;
+            border-radius: 10px;
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .kazan.p1 { border: 2px solid var(--p1-color); }
+        .kazan.p2 { border: 2px solid var(--p2-color); }
+
+        .status {
+            margin-top: 20px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            height: 1.5em;
+        }
+
+        .disabled { pointer-events: none; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+    <h1>Тогуз Коргоол</h1>
+
+    <div class="controls">
+        <label>Сложность: 
+            <select id="difficulty">
+                <option value="easy">Лёгкий</option>
+                <option value="medium">Средний</option>
+                <option value="hard">Сложный</option>
+            </select>
+        </label>
+        <button onclick="initGame()">Новая игра</button>
+    </div>
+
+    <div id="status" class="status">Ход игрока</div>
+
+    <div class="board" id="board">
+        <!-- Ряд противника (Игрок 2 / Компьютер) -->
+        <div class="row" id="row2"></div>
+
+        <div class="kazans">
+            <div class="kazan p2">Компьютер: <span id="kazan2">0</span></div>
+            <div class="kazan p1">Вы: <span id="kazan1">0</span></div>
+        </div>
+
+        <!-- Ряд игрока (Игрок 1) -->
+        <div class="row" id="row1"></div>
+    </div>
+
+<script>
+    let state = {
+        board: Array(18).fill(9), // 0-8: P1, 9-17: P2
+        kazan: [0, 0],
+        tuz: [-1, -1], // Индексы лунок-тузов
+        currentPlayer: 0, // 0 - P1, 1 - P2
+        gameOver: false
+    };
+
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const difficultyEl = document.getElementById('difficulty');
+
+    function initGame() {
+        state = {
+            board: Array(18).fill(9),
+            kazan: [0, 0],
+            tuz: [-1, -1],
+            currentPlayer: 0,
+            gameOver: false
+        };
+        render();
+        statusEl.innerText = "Ваш ход";
+    }
+
+    function render() {
+        const row1 = document.getElementById('row1');
+        const row2 = document.getElementById('row2');
+        row1.innerHTML = '';
+        row2.innerHTML = '';
+
+        // Отрисовка лунок (P2 сверху в обратном порядке, P1 снизу)
+        for (let i = 17; i >= 9; i--) {
+            row2.appendChild(createPit(i));
+        }
+        for (let i = 0; i <= 8; i++) {
+            row1.appendChild(createPit(i));
+        }
+
+        document.getElementById('kazan1').innerText = state.kazan[0];
+        document.getElementById('kazan2').innerText = state.kazan[1];
+
+        if (state.currentPlayer === 1 && !state.gameOver) {
+            boardEl.classList.add('disabled');
+            setTimeout(computerMove, 800);
+        } else {
+            boardEl.classList.remove('disabled');
+        }
+    }
+
+    function createPit(index) {
+        const div = document.createElement('div');
+        div.className = 'pit';
+        if (state.tuz.includes(index)) div.classList.add('tuz');
+        
+        div.innerHTML = `
+            <span class="pit-index">${(index % 9) + 1}</span>
+            <span class="count">${state.tuz.includes(index) ? 'X' : state.board[index]}</span>
+        `;
+
+        div.onclick = () => handleMove(index);
+        return div;
+    }
+
+    function handleMove(index) {
+        if (state.gameOver) return;
+        if (state.currentPlayer === 0 && (index < 0 || index > 8)) return;
+        if (state.currentPlayer === 1 && (index < 9 || index > 17)) return;
+        if (state.board[index] === 0 || state.tuz.includes(index)) return;
+
+        makeMove(index);
+        checkGameOver();
+        render();
+    }
+
+    function makeMove(index) {
+        let count = state.board[index];
+        let lastPos = index;
+
+        if (count === 1) {
+            state.board[index] = 0;
+            lastPos = (index + 1) % 18;
+            state.board[lastPos]++;
+        } else {
+            state.board[index] = 1;
+            for (let i = 1; i < count; i++) {
+                lastPos = (index + i) % 18;
+                state.board[lastPos]++;
+            }
+        }
+
+        // Проверка захвата
+        const opponentSide = state.currentPlayer === 0 ? [9, 17] : [0, 8];
+        if (lastPos >= opponentSide[0] && lastPos <= opponentSide[1]) {
+            // Четное число - захват
+            if (state.board[lastPos] % 2 === 0) {
+                state.kazan[state.currentPlayer] += state.board[lastPos];
+                state.board[lastPos] = 0;
+            } 
+            // Правило Туза
+            else if (state.board[lastPos] === 3 && state.tuz[state.currentPlayer] === -1) {
+                const opponentTuzHole = state.tuz[1 - state.currentPlayer];
+                // Нельзя брать 9-ю лунку и ту же лунку, что у противника
+                if (lastPos !== 8 && lastPos !== 17 && (lastPos % 9 !== opponentTuzHole % 9)) {
+                    state.tuz[state.currentPlayer] = lastPos;
+                    state.kazan[state.currentPlayer] += 3;
+                    state.board[lastPos] = 0;
+                }
+            }
+        }
+
+        // Сбор камней из своего туза
+        collectTuz();
+        
+        state.currentPlayer = 1 - state.currentPlayer;
+        statusEl.innerText = state.currentPlayer === 0 ? "Ваш ход" : "Ход компьютера...";
+    }
+
+    function collectTuz() {
+        state.tuz.forEach((pitIndex, playerIndex) => {
+            if (pitIndex !== -1) {
+                state.kazan[playerIndex] += state.board[pitIndex];
+                state.board[pitIndex] = 0;
+            }
+        });
+    }
+
+    function checkGameOver() {
+        if (state.kazan[0] > 81) {
+            endGame("Вы победили!");
+        } else if (state.kazan[1] > 81) {
+            endGame("Компьютер победил!");
+        } else if (state.kazan[0] === 81 && state.kazan[1] === 81) {
+            endGame("Ничья!");
+        }
+    }
+
+    function endGame(msg) {
+        state.gameOver = true;
+        statusEl.innerText = msg;
+        boardEl.classList.add('disabled');
+    }
+
+    // ИИ
+    function computerMove() {
+        const difficulty = difficultyEl.value;
+        const validMoves = [];
+        for (let i = 9; i <= 17; i++) {
+            if (state.board[i] > 0 && !state.tuz.includes(i)) validMoves.push(i);
+        }
+
+        if (validMoves.length === 0) {
+            state.currentPlayer = 0;
+            render();
+            return;
+        }
+
+        let chosenMove;
+        if (difficulty === 'easy') {
+            chosenMove = validMoves[Math.floor(Math.random() * validMoves.length)];
+        } else {
+            // Простая оценка: ищем ход с захватом
+            let bestScore = -1;
+            chosenMove = validMoves[0];
+
+            for (let move of validMoves) {
+                let score = 0;
+                let count = state.board[move];
+                let lastPos = (count === 1) ? (move + 1) % 18 : (move + count - 1) % 18;
+                
+                if (lastPos < 9 && state.board[lastPos] % 2 === 1) score += (state.board[lastPos] + 1);
+                
+                if (difficulty === 'hard') {
+                    if (state.board[move] > 10) score += 2;
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    chosenMove = move;
+                }
+            }
+        }
+
+        handleMove(chosenMove);
+    }
+
+    initGame();
+</script>
+
+</body>
+</html>
